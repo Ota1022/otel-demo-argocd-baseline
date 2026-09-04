@@ -14,3 +14,22 @@
 # Always restate the upstream elements, e.g. the traces pipeline needs
 #   exporters: [otlp_grpc/jaeger, debug, span_metrics]
 # plus whatever is being added. Check the current defaults with the command above before editing.
+
+# 2026-09-04, first Sync on this Mac (16 GiB, VM 10 GB / 6 CPU): starting all 30 pods at once
+# saturated the kind node (load average 103 on 6 vCPUs, node memory 6.2 GiB, Mac swapping 5.5 GB,
+# etcd failing the API server readiness check). Components disabled below are the ones the trace
+# check does not need (see README "If the Mac runs out of memory"). Memory limits removed:
+# agent/mcp/chatbot 1500Mi, load-generator 512Mi, telemetry-docs 100Mi. With load-generator off,
+# traces come only from manual clicks; re-enable it (same VU count in both conditions) for the
+# CloudWatch comparison. frontend-proxy keeps routes to chatbot/telemetry-docs; they return 503.
+components:
+  agent:
+    enabled: false
+  mcp:
+    enabled: false
+  chatbot:
+    enabled: false
+  telemetry-docs:
+    enabled: false
+  load-generator:
+    enabled: false
