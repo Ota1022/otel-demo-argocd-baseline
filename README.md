@@ -15,6 +15,7 @@ on a local kind cluster, deployed and drift-checked by Argo CD, with the demo's 
 | Step | Status |
 |---|---|
 | Tool versions, chart version, chart defaults, official docs | checked on this Mac, 2026-09-04 14:10 JST |
+| Local render: `helm template` (Helm 4.0.5) of chart 0.41.0 with `otel-demo/values/local.yaml` | checked 2026-09-04: 92 objects render; the comment-only values file is accepted |
 | kind cluster, Argo CD install, first Sync, trace check, GitOps / drift demo | **not yet executed** — steps below come from the official docs and the chart contents; update this table and the notes when you run them |
 
 ## Architecture
@@ -186,7 +187,9 @@ All commands run from the repository root.
 
    If Sync fails with `ConfigMap ... metadata.annotations: Too long` (large Grafana dashboards),
    add `ServerSideApply=true` to `syncPolicy.syncOptions`, commit, push, `argocd app get otel-demo --refresh`, Sync again,
-   and record here that it was needed.
+   and record here that it was needed. This is plausible: the largest rendered object, ConfigMap
+   `grafana-dashboard-opentelemetry-collector`, is 236,765 bytes as YAML (local `helm template`, 2026-09-04), and client-side
+   apply stores the whole object again in the `last-applied-configuration` annotation, whose limit is 262,144 bytes.
 
 ## Access
 
@@ -272,9 +275,14 @@ Self-heal is not enabled, so the drift stays until you Sync.
   | logs | sub-chart default | memory_limiter, resourcedetection, resource, transform/sanitize_logs | opensearch, debug |
   | profiles | otlp | memory_limiter, resourcedetection, resource, filter/sanitize_profiles | otlp_grpc/firepit, debug |
 
-  Receivers not listed in the demo values, and processors injected by presets (k8sattributes, ...), come from the
-  `opentelemetry-collector` sub-chart. Read the effective config from the rendered ConfigMap (`argocd app manifests otel-demo`
-  or `kubectl -n otel-demo get configmap otel-collector -o yaml`).
+  Receivers not listed in the demo values, and processors injected by presets, come from the `opentelemetry-collector`
+  sub-chart. Effective config as rendered locally with `helm template` on 2026-09-04 (confirm on the cluster with
+  `argocd app manifests otel-demo` or `kubectl -n otel-demo get configmap otel-collector -o yaml`):
+
+  - traces: receivers `otlp, jaeger, zipkin`; processors `k8s_attributes, memory_limiter, resourcedetection, resource, transform/sanitize_logs, gen_ai_normalizer`; exporters as above.
+  - metrics: receivers additionally `receiver_creator/metrics, hostmetrics, kubeletstats, k8s_cluster`; `k8s_attributes` first in processors.
+  - logs / profiles: receivers `otlp`; `k8s_attributes` first in processors.
+  - extensions: `health_check, opamp, k8s_observer, k8s_leader_elector/k8s_cluster`.
 - Array override caution: the docs say to keep the `spanmetrics` exporter when overriding; in chart 0.41.0 the connector is
   named `span_metrics`. Overriding `service.pipelines.traces.exporters` replaces the array, so restate
   `[otlp_grpc/jaeger, debug, span_metrics, ...]`.
