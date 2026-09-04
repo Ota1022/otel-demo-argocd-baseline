@@ -18,7 +18,8 @@ on a local kind cluster, deployed and drift-checked by Argo CD, with the demo's 
 | Local render: `helm template` (Helm 4.0.5) of chart 0.41.0 with `otel-demo/values/local.yaml` | checked 2026-09-04: 92 objects render; the comment-only values file is accepted |
 | kind cluster | executed 2026-09-04: node `NotReady` for about 20 s (kindnet starting), `Ready` after about 35 s; kube-system has 8 pods |
 | Argo CD install | executed 2026-09-04: client-side apply created only 2 of 3 CRDs (`applicationsets.argoproj.io` hit the 262,144-byte annotation limit) and `argocd-applicationset-controller` crash-looped; re-applying with `--server-side` created the missing CRD and all 7 pods became `Running`; the script now uses `--server-side` (see Setup step 2) |
-| First Sync, trace check, GitOps / drift demo | **not yet executed** — steps below come from the official docs and the chart contents; update this table and the notes when you run them |
+| First Sync | executed 2026-09-04: `argocd app sync` applied 92 objects in 3 s. The Grafana dashboard ConfigMap did **not** hit the annotation limit (236,779 bytes as JSON), so `ServerSideApply` is not needed. Starting all 30 pods saturated the VM for about 30 minutes (node load average above 100, Mac swapping 5 GB, kube-apiserver / etcd / CoreDNS / `argocd-repo-server` restarting on failed liveness probes). agent, mcp, chatbot, telemetry-docs and load-generator were then disabled in `local.yaml` (commit 248cd08) and pruned. Result: 82 objects, 25 pods, Synced / Healthy |
+| Trace check, GitOps / drift demo | **not yet executed** — steps below come from the official docs and the chart contents; update this table and the notes when you run them |
 
 ## Architecture
 
@@ -271,6 +272,9 @@ Self-heal is not enabled, so the drift stays until you Sync.
 ## Baseline for the AWS comparison
 
 - Chart: `opentelemetry-demo` 0.41.0 / appVersion 3.0.0.
+- Components disabled in `otel-demo/values/local.yaml` (a deviation from upstream defaults): agent, mcp, chatbot, telemetry-docs,
+  load-generator. Reason and numbers: Verification status above. Both comparison conditions must use the same set; if load is
+  wanted, re-enable load-generator with the same VU count in both.
 - Collector: `otel/opentelemetry-collector-contrib`, `mode: daemonset`, Service `otel-collector` (4317 / 4318),
   presets hostMetrics, kubernetesAttributes, kubeletMetrics, clusterMetrics, annotationDiscovery (metrics);
   extensions `health_check`, `opamp` (-> `opamp-server:4320`).
@@ -302,6 +306,13 @@ Self-heal is not enabled, so the drift stays until you Sync.
 
 - Detect: `kubectl -n otel-demo get pods` (OOMKilled, growing RESTARTS), `docker stats otel-demo-control-plane`.
   kind has no metrics-server, so `kubectl top` does not work.
+- Observed 2026-09-04: the first Sync of the full chart drove the kind node to a load average above 100 and the Mac into 5 GB of
+  swap. kube-apiserver, etcd, CoreDNS and `argocd-repo-server` restarted repeatedly on failed liveness probes, so neither `argocd`
+  nor `kubectl` reached the cluster reliably for about 30 minutes and three sync attempts failed inside Argo CD (DNS timeout,
+  repo-server in CrashLoopBackOff). What worked: `kubectl -n otel-demo scale deployment agent mcp chatbot telemetry-docs
+  load-generator --replicas=0` (one API call each, no dependency on in-cluster DNS or the repo-server; CPU fell from 540% to
+  60% within a minute), then a sync with prune once `argocd-repo-server` was Ready. A sync can be requested without the CLI:
+  `kubectl -n argocd patch application otel-demo --type merge -p '{"operation":{"sync":{"prune":true,"revisions":["0.41.0","main"]}}}'`.
 - Disable in this order, least impact on the tracing check first, via `components.<name>.enabled: false` in `local.yaml`:
   `agent`, `mcp`, `chatbot` (1500Mi total, LLM demo, not on the checkout path) -> `telemetry-docs` (100Mi) ->
   `load-generator` (512Mi; traces then only come from your own clicks).
