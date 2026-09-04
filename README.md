@@ -16,7 +16,9 @@ on a local kind cluster, deployed and drift-checked by Argo CD, with the demo's 
 |---|---|
 | Tool versions, chart version, chart defaults, official docs | checked on this Mac, 2026-09-04 14:10 JST |
 | Local render: `helm template` (Helm 4.0.5) of chart 0.41.0 with `otel-demo/values/local.yaml` | checked 2026-09-04: 92 objects render; the comment-only values file is accepted |
-| kind cluster, Argo CD install, first Sync, trace check, GitOps / drift demo | **not yet executed** — steps below come from the official docs and the chart contents; update this table and the notes when you run them |
+| kind cluster | executed 2026-09-04: node `NotReady` for about 20 s (kindnet starting), `Ready` after about 35 s; kube-system has 8 pods |
+| Argo CD install | executed 2026-09-04: client-side apply created only 2 of 3 CRDs (`applicationsets.argoproj.io` hit the 262,144-byte annotation limit) and `argocd-applicationset-controller` crash-looped; re-applying with `--server-side` created the missing CRD and all 7 pods became `Running`; the script now uses `--server-side` (see Setup step 2) |
+| First Sync, trace check, GitOps / drift demo | **not yet executed** — steps below come from the official docs and the chart contents; update this table and the notes when you run them |
 
 ## Architecture
 
@@ -152,11 +154,16 @@ All commands run from the repository root.
    ```
 
    Creates namespace `argocd` and applies the official Argo CD v3.5.2 `install.yaml`
-   (CRDs, RBAC, Deployments, StatefulSet, Services). This is the only deployment done with kubectl.
-   Check: `kubectl -n argocd get pods` shows all pods `Running`. The script prints the initial `admin` password.
+   (3 CRDs, RBAC, 6 Deployments, 1 StatefulSet, Services) with **server-side apply**. This is the only deployment done with kubectl.
+   Check: `kubectl -n argocd get pods` shows 7 pods `Running`. The script prints the initial `admin` password.
 
-   If the apply fails with `metadata.annotations: Too long: must have at most 262144 bytes`, re-run the apply with
-   `--server-side` (see the comment in the script).
+   Why `--server-side` (observed 2026-09-04): client-side apply stores every object again in the
+   `kubectl.kubernetes.io/last-applied-configuration` annotation, limited to 262,144 bytes. The `applicationsets.argoproj.io`
+   CRD is 1,394,816 bytes as YAML and fails with `metadata.annotations: Too long`; kubectl keeps applying the remaining objects
+   and exits 1, so the script stopped after the apply with only 2 of 3 CRDs created and `argocd-applicationset-controller`
+   in CrashLoopBackOff (`no matches for kind "ApplicationSet"`). The `applications.argoproj.io` CRD (405,969 bytes as YAML,
+   197,612 as the compact JSON stored in the annotation) still fits. Recovery from that state: run the same apply with
+   `--server-side`; existing objects are unchanged and the missing CRD is created.
 
 3. **Application bootstrap (one-time kubectl apply)**
 
