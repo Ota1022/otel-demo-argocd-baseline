@@ -1,0 +1,16 @@
+# Values for the local (kind) baseline.
+#
+# Only differences from the upstream chart defaults belong here. To see the defaults:
+#   helm show values open-telemetry/opentelemetry-demo --version 0.41.0
+# Comparing that output with this file shows the full customization.
+#
+# To add a comparison experiment, copy this file to e.g.
+#   otel-demo/values/upstream-cloudwatch.yaml
+#   otel-demo/values/cloudwatch-agent.yaml
+# and point `valueFiles` in argocd/application.yaml at the new file.
+#
+# Caution: overriding any array under opentelemetry-collector.config.service.pipelines.*
+# (receivers / processors / exporters) replaces the whole array (Helm merge semantics).
+# Always restate the upstream elements, e.g. the traces pipeline needs
+#   exporters: [otlp_grpc/jaeger, debug, span_metrics]
+# plus whatever is being added. Check the current defaults with the command above before editing.

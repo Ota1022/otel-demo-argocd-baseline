@@ -1,0 +1,10 @@
+# kind cluster definition.
+# The node image is pinned by digest, taken from the kind v0.31.0 release notes,
+# so that a different kind version on another machine still boots the same Kubernetes.
+# https://github.com/kubernetes-sigs/kind/releases/tag/v0.31.0
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: otel-demo
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f

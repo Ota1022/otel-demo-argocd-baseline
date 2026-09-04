@@ -1,0 +1,35 @@
+# Argo CD Application that manages Astronomy Shop (OpenTelemetry Demo).
+# Apply this file once by hand (`kubectl apply -f argocd/application.yaml`) to bootstrap.
+# After that, every change goes Git -> Argo CD Sync -> Kubernetes; do not `helm install` or `kubectl apply` the demo directly.
+#
+# Approach: multiple sources
+#   source 1 = the official OpenTelemetry Helm repository (chart version pinned)
+#   source 2 = this Git repository, which only provides values files (exposed as $values via `ref: values`)
+# The upstream chart is never copied into this repository. All customization lives in otel-demo/values/*.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-demo
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io   # deleting the Application also deletes the deployed resources
+spec:
+  project: default
+  sources:
+    - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+      chart: opentelemetry-demo
+      targetRevision: 0.41.0          # appVersion 3.0.0. Why this version and when it was checked: see README
+      helm:
+        releaseName: otel-demo
+        valueFiles:
+          - $values/otel-demo/values/local.yaml
+    - repoURL: https://github.com/Ota1022/otel-demo-argocd-baseline.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: otel-demo
+  syncPolicy:
+    # No `automated` on purpose: the point of this repo is to watch Git change -> OutOfSync -> manual Sync.
+    syncOptions:
+      - CreateNamespace=true
