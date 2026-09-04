@@ -3,6 +3,20 @@
 This directory holds the plan for comparing two telemetry paths on top of the baseline in this repository.
 No AWS resources exist yet. Nothing below is implemented as of 2026-09-04.
 
+## Decisions (2026-09-04)
+
+- **The comparison runs on the same kind cluster, not on EKS**, to avoid cost. Consequences:
+  - No IRSA. AWS credentials for the Collector exporter (A) and the CloudWatch Agent (B) are passed as static
+    credentials through env or a Kubernetes Secret, decided on the day. Secrets are never committed to this repo.
+  - Node-oriented CloudWatch Agent features that assume EKS (Container Insights) are out of scope.
+- **Both conditions use the reduced component set** from `otel-demo/values/local.yaml`: agent, mcp, chatbot,
+  telemetry-docs and load-generator disabled. The full chart saturated the 10 GB VM on this Mac
+  (README, Verification status). After the reduction the node uses about 6.9 GiB of 9.7 GiB, which leaves room for
+  one CloudWatch Agent Deployment; if more is needed, disable opensearch next (requires overriding the logs pipeline
+  exporters, e.g. `[debug]`).
+- Traffic: either keep load-generator disabled in both conditions and drive the same manual checkout, or re-enable
+  it in both with the same VU count. Never enable it on one side only.
+
 ## Current path (baseline)
 
 ```text
@@ -37,7 +51,8 @@ Every service builds its endpoint from the shared env `OTEL_COLLECTOR_NAME=otel-
 
 ## Keeping the comparison fair
 
-- Same chart version (0.41.0), same set of enabled components, same load-generator VUs (5) in both.
+- Same chart version (0.41.0), same set of enabled components (the reduced set above), same traffic source in both
+  (load-generator off in both, or on in both with the same VU count).
 - Same sampling: SDK defaults, no sampling in the Collector. Do not add tail sampling to one side only.
 - Attributes that exist only because of the Collector path, record them as a difference rather than a bug:
   `service.instance.id` (resource processor), `k8s.*` (k8sattributes preset), `host.*` (resourcedetection).
